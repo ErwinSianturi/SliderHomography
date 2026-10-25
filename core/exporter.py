@@ -30,6 +30,7 @@ class CalibrationExporter:
         metrics: Dict[str, Any],
         calibrated_pairs: List[Dict[str, Any]],
         output_path: str,
+        camera_status: Optional[str] = None,
     ) -> str:
         """Exports Format A: Independent calibration overrides and experiment report."""
         record = {
@@ -38,6 +39,7 @@ class CalibrationExporter:
             "camera_id": camera_id,
             "camera_label": camera_label,
             "frame": frame,
+            "camera_status": camera_status or "Unchecked",
             "calibration_mode": mode,
             "parameters": {
                 "delta_x_px": float(parameters.get("dx", 0.0)),
@@ -98,6 +100,7 @@ class CalibrationExporter:
         self,
         calibrated_pairs_by_camera: Dict[str, List[Dict[str, Any]]],
         output_path: str,
+        camera_statuses: Optional[Dict[str, str]] = None,
     ) -> str:
         """Exports Format B: Full cameras_export.json clone with updated pairs for calibrated cameras.
         
@@ -114,6 +117,13 @@ class CalibrationExporter:
             if cid in updated_cams:
                 h["pairs"] = calibrated_pairs_by_camera[cid]
                 h["updatedAt"] = now_iso
+
+        # Update camera review statuses if provided
+        if camera_statuses:
+            for c in new_master.get("cameras", []):
+                cid = c.get("id")
+                if cid in camera_statuses:
+                    c["review_status"] = camera_statuses[cid]
 
         new_master["exportedAt"] = now_iso
         new_master["_calibration_notice"] = (

@@ -19,7 +19,17 @@ WORKSPACE_DIR = os.path.dirname(os.path.abspath(__file__))
 if WORKSPACE_DIR not in sys.path:
     sys.path.insert(0, WORKSPACE_DIR)
 
-from core.config_loader import DataLoader, CAMERA_ANOMALY_REGISTRY, sanitize_filename
+from core.config_loader import (
+    DataLoader,
+    CAMERA_REFERENCE_METADATA,
+    CAMERA_ANOMALY_REGISTRY,
+    sanitize_filename,
+    load_camera_statuses,
+    save_camera_statuses,
+    normalize_camera_status,
+    VALID_CAMERA_STATUSES,
+    DEFAULT_CAMERA_STATUS,
+)
 from core.homography_engine import (
     compute_homography_dlt,
     project_points,
@@ -44,10 +54,10 @@ st.markdown("""
     .main-header { font-size: 26px; font-weight: 700; color: #1e293b; margin-bottom: 2px; }
     .sub-header { font-size: 14px; color: #64748b; margin-bottom: 18px; }
     .metric-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
-    .badge-critical { background-color: #fee2e2; color: #b91c1c; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
-    .badge-strong { background-color: #ffedd5; color: #c2410c; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
-    .badge-normal { background-color: #f1f5f9; color: #475569; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
-    .badge-calibrated { background-color: #dcfce7; color: #15803d; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
+    .badge-checked { background-color: #dcfce7; color: #15803d; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
+    .badge-flagged { background-color: #fee2e2; color: #b91c1c; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
+    .badge-unchecked { background-color: #f1f5f9; color: #475569; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
+    .badge-calibrated { background-color: #ede9fe; color: #6d28d9; font-weight: 600; padding: 3px 8px; border-radius: 6px; }
 
     /* Compact styling for precision nudge buttons in sidebar */
     section[data-testid="stSidebar"] div[data-testid="stHorizontalBlock"] button {
@@ -139,6 +149,8 @@ if "session_calibrations" not in st.session_state:
     st.session_state.session_calibrations = {}
 if "session_custom_pairs" not in st.session_state:
     st.session_state.session_custom_pairs = {}
+if "camera_statuses" not in st.session_state:
+    st.session_state.camera_statuses = load_camera_statuses(WORKSPACE_DIR)
 
 overrides_path = os.path.join(WORKSPACE_DIR, "homography_calibration_overrides.json")
 if os.path.exists(overrides_path):
@@ -158,43 +170,58 @@ if os.path.exists(overrides_path):
                     }
                 if cid not in st.session_state.session_custom_pairs and record.get("calibrated_pairs"):
                     st.session_state.session_custom_pairs[cid] = record["calibrated_pairs"]
+                if cid not in st.session_state.camera_statuses and record.get("camera_status"):
+                    st.session_state.camera_statuses[cid] = normalize_camera_status(record["camera_status"])
     except Exception:
         pass
 
 # ----------------- SIDEBAR: CAMERA SELECTION -----------------
 st.sidebar.markdown("### 📷 Camera Selection")
-all_cameras = loader.get_camera_list()
+all_cameras = loader.get_camera_list(st.session_state.camera_statuses)
+
+def get_status_icon(st_val: str) -> str:
+    clean = normalize_camera_status(st_val)
+    if clean == "Checked":
+        return "✅"
+    elif clean == "Flagged":
+        return "🚩"
+    return "⏳"
+
+cnt_flagged = sum(1 for c in all_cameras if c["status"] == "Flagged")
+cnt_unchecked = sum(1 for c in all_cameras if c["status"] == "Unchecked")
+cnt_checked = sum(1 for c in all_cameras if c["status"] == "Checked")
+cnt_calib = sum(
+    1 for c in all_cameras
+    if (c["id"] in st.session_state.session_calibrations or c["id"] in st.session_state.get("session_custom_pairs", {}))
+)
 
 filter_option = st.sidebar.selectbox(
-    "Filter by Status",
+    "Filter Status Pemeriksaan",
     [
-        "All Cameras (98)",
-        "🚨 Critical Anomalies (4)",
-        "⚠️ Strong Indication (3)",
-        "🔍 Needs Verification (2)",
-        "Normal (89)",
-        "💾 Session Calibrated",
+        f"Semua Kamera ({len(all_cameras)})",
+        f"🚩 Flagged ({cnt_flagged})",
+        f"⏳ Unchecked ({cnt_unchecked})",
+        f"✅ Checked ({cnt_checked})",
+        f"💾 Session Calibrated ({cnt_calib})",
     ],
 )
 
 filtered_cameras = []
 for c in all_cameras:
     cid = c["id"]
-    status = c["anomaly_status"]
+    c_stat = c["status"]
     is_calibrated = (
         cid in st.session_state.session_calibrations
         or cid in st.session_state.get("session_custom_pairs", {})
     )
 
-    if filter_option.startswith("All"):
+    if filter_option.startswith("Semua"):
         filtered_cameras.append(c)
-    elif filter_option.startswith("🚨") and "Confirmed" in status:
+    elif filter_option.startswith("🚩") and c_stat == "Flagged":
         filtered_cameras.append(c)
-    elif filter_option.startswith("⚠️") and "Strong" in status:
+    elif filter_option.startswith("⏳") and c_stat == "Unchecked":
         filtered_cameras.append(c)
-    elif filter_option.startswith("🔍") and "Needs" in status:
-        filtered_cameras.append(c)
-    elif filter_option.startswith("Normal") and status == "Normal":
+    elif filter_option.startswith("✅") and c_stat == "Checked":
         filtered_cameras.append(c)
     elif filter_option.startswith("💾") and is_calibrated:
         filtered_cameras.append(c)
@@ -203,28 +230,50 @@ if not filtered_cameras:
     filtered_cameras = all_cameras
 
 cam_options = {
-    c["id"]: f"{'💾 ' if (c['id'] in st.session_state.session_calibrations or c['id'] in st.session_state.get('session_custom_pairs', {})) else ''}{c['id']} ({c['anomaly_status']})"
+    c["id"]: f"{'💾 ' if (c['id'] in st.session_state.session_calibrations or c['id'] in st.session_state.get('session_custom_pairs', {})) else ''}{get_status_icon(c['status'])} {c['id']} [{c['status']}]"
     for c in filtered_cameras
 }
-selected_cam_id = st.sidebar.selectbox("Select Camera", options=list(cam_options.keys()), format_func=lambda x: cam_options[x])
+selected_cam_id = st.sidebar.selectbox("Pilih Kamera", options=list(cam_options.keys()), format_func=lambda x: cam_options[x])
 
 cam_info = next(c for c in all_cameras if c["id"] == selected_cam_id)
-anomaly_meta = cam_info.get("anomaly_details")
+ref_meta = cam_info.get("reference_info")
+current_cam_status = normalize_camera_status(st.session_state.camera_statuses.get(selected_cam_id, cam_info["status"]))
+
+# Status Examination Modifier Form
+st.sidebar.markdown("##### 📌 Status Pemeriksaan")
+col_st1, col_st2 = st.sidebar.columns([1, 1.8])
+badge_cls = f"badge-{current_cam_status.lower()}"
+col_st1.markdown(f"<div style='margin-top:5px;'><span class='{badge_cls}'>{get_status_icon(current_cam_status)} {current_cam_status}</span></div>", unsafe_allow_html=True)
+
+new_cam_status = col_st2.selectbox(
+    "Ubah Status Pemeriksaan",
+    options=VALID_CAMERA_STATUSES,
+    index=VALID_CAMERA_STATUSES.index(current_cam_status),
+    key=f"status_select_{selected_cam_id}",
+    label_visibility="collapsed",
+)
+
+if new_cam_status != current_cam_status:
+    st.session_state.camera_statuses[selected_cam_id] = new_cam_status
+    save_camera_statuses(WORKSPACE_DIR, st.session_state.camera_statuses)
+    st.sidebar.success(f"Status {selected_cam_id} disimpan: {new_cam_status}")
+    st.rerun()
 
 # Camera Metadata Display
-with st.sidebar.expander("ℹ️ Camera Details & Anomaly Record", expanded=True):
+with st.sidebar.expander("ℹ️ Detail Kamera", expanded=True):
     st.markdown(f"**Label:** `{cam_info['label']}`")
     st.markdown(f"**Frame:** `{cam_info['frame']}`")
     st.markdown(f"**Detections:** `{cam_info['detections_count']} persons`")
     st.markdown(f"**Pairs:** `{cam_info['pairs_count']} pairs`")
+    st.markdown(f"**Status Pemeriksaan:** <span class='{badge_cls}'>{get_status_icon(current_cam_status)} {current_cam_status}</span>", unsafe_allow_html=True)
     
-    status_class = "badge-critical" if "Confirmed" in cam_info["anomaly_status"] else ("badge-strong" if "Strong" in cam_info["anomaly_status"] else "badge-normal")
-    st.markdown(f"**Status:** <span class='{status_class}'>{cam_info['anomaly_status']}</span>", unsafe_allow_html=True)
-    
-    if anomaly_meta:
-        st.markdown(f"**Intended Aisle:** `{anomaly_meta.get('intended_aisle')}`")
-        st.markdown(f"**Recorded Aisle:** `{anomaly_meta.get('recorded_aisle')}`")
-        st.caption(anomaly_meta.get("description", ""))
+    if ref_meta:
+        if ref_meta.get("intended_aisle"):
+            st.markdown(f"**Lorong Tujuan:** `{ref_meta['intended_aisle']}`")
+        if ref_meta.get("recorded_aisle"):
+            st.markdown(f"**Lorong Terdeteksi Awal:** `{ref_meta['recorded_aisle']}`")
+        if ref_meta.get("description"):
+            st.caption(ref_meta["description"])
 
 # ----------------- CALIBRATION PARAMETERS (CONTROLS) -----------------
 st.sidebar.markdown("---")
@@ -288,12 +337,12 @@ if key_theta not in st.session_state:
 if key_foot not in st.session_state:
     st.session_state[key_foot] = float(default_foot)
 
-# Recommended Preset button with callback
-if anomaly_meta and ("recommended_dy" in anomaly_meta or "recommended_dx" in anomaly_meta):
-    rec_dy = float(anomaly_meta.get("recommended_dy", 0.0))
-    rec_dx = float(anomaly_meta.get("recommended_dx", 0.0))
+# Reference values button if available
+if ref_meta and ("recommended_dy" in ref_meta or "recommended_dx" in ref_meta):
+    rec_dy = float(ref_meta.get("recommended_dy", 0.0))
+    rec_dx = float(ref_meta.get("recommended_dx", 0.0))
     st.sidebar.button(
-        f"⚡ Apply Recommended Preset (ΔY={rec_dy:.0f}px, ΔX={rec_dx:.0f}px)",
+        f"⚡ Terapkan Nilai Referensi (ΔY={rec_dy:.0f}px, ΔX={rec_dx:.0f}px)",
         on_click=cb_apply_preset,
         args=(selected_cam_id, rec_dx, rec_dy),
         use_container_width=True,
@@ -488,7 +537,7 @@ baseline_pts_arr = np.array(baseline_pts, dtype=float) if baseline_pts else np.z
 calibrated_pts_arr = np.array(calibrated_pts, dtype=float) if calibrated_pts else np.zeros((0, 2))
 
 # Evaluate metrics
-intended_target = anomaly_meta.get("intended_aisle") if anomaly_meta else None
+intended_target = ref_meta.get("intended_aisle") if ref_meta else None
 eval_metrics = validator.evaluate_points(
     baseline_pts_arr,
     calibrated_pts_arr,
@@ -821,6 +870,7 @@ with tab_export:
                 metrics=eval_metrics,
                 calibrated_pairs=calib_pairs_curr,
                 output_path=exp_a_path,
+                camera_status=current_cam_status,
             )
             st.success(f"Format A exported successfully to:\n`{saved_file_a}`")
 
@@ -866,6 +916,7 @@ with tab_export:
             saved_file_b = exporter.export_format_b_master_compatible(
                 calibrated_pairs_by_camera=all_calibrated_pairs,
                 output_path=exp_b_path,
+                camera_statuses=st.session_state.camera_statuses,
             )
             st.success(f"Format B exported successfully to:\n`{saved_file_b}`")
 

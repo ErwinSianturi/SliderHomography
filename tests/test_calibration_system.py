@@ -50,21 +50,30 @@ class TestHomographyCalibration(unittest.TestCase):
         self.assertGreater(len(self.loader.baseline_detections), 1000)
 
     def test_02_camera_taxonomy(self):
-        """Verify anomalous camera registry identification."""
+        """Verify camera status uses strictly Checked, Flagged, Unchecked and reference info is preserved."""
+        from core.config_loader import VALID_CAMERA_STATUSES
+
         cam_list = self.loader.get_camera_list()
         self.assertEqual(len(cam_list), 98)
         
-        # Check critical cameras
-        crit_ids = [
+        # Verify every camera has a valid 3-choice status
+        for c in cam_list:
+            self.assertIn(c["status"], VALID_CAMERA_STATUSES)
+            self.assertNotIn("Critical", c["status"])
+            self.assertNotIn("Strong", c["status"])
+
+        # Check that reference cameras retain spatial context without severity labels
+        ref_ids = [
             "Shelf M Wow Spagheti, Energen, Sterile Milk (4mm)",
             "Shelf M Migelas (4mm)",
             "Lorong Bawah 1",
             "Shelf M Laundry Liquid",
         ]
-        found_crit = [c for c in cam_list if c["id"] in crit_ids]
-        self.assertEqual(len(found_crit), 4)
-        for c in found_crit:
-            self.assertIn("Confirmed", c["anomaly_status"])
+        found_refs = [c for c in cam_list if c["id"] in ref_ids]
+        self.assertEqual(len(found_refs), 4)
+        for c in found_refs:
+            self.assertIsNotNone(c["reference_info"])
+            self.assertIn("intended_aisle", c["reference_info"])
 
     def test_03_foot_point_calculation(self):
         """Verify foot-point calculation matches production bottom_center."""

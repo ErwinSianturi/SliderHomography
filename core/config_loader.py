@@ -28,10 +28,54 @@ def sanitize_filename(s: str) -> str:
     """Sanitizes camera name into valid filename consistent with stage2_project_draw."""
     return re.sub(r"[^A-Za-z0-9._-]+", "_", s).strip("_")
 
-# Anomaly taxonomy verified against spatial audit and detect_20261024 baseline
-CAMERA_ANOMALY_REGISTRY = {
+VALID_CAMERA_STATUSES = ["Unchecked", "Flagged", "Checked"]
+DEFAULT_CAMERA_STATUS = "Unchecked"
+CAMERA_STATUSES_FILE = "camera_statuses.json"
+
+
+def normalize_camera_status(val: Any) -> str:
+    """Normalizes any input/legacy status into strictly one of: 'Checked', 'Flagged', 'Unchecked'."""
+    if val is None:
+        return DEFAULT_CAMERA_STATUS
+    s = str(val).strip().lower()
+    if s in ("checked", "verified", "selesai", "ok", "valid"):
+        return "Checked"
+    elif s in ("flagged", "kritis", "critical", "strong", "needs verification", "anomali", "warning", "confirmed"):
+        return "Flagged"
+    elif s in ("unchecked", "planned", "pending", "belum", "normal"):
+        return "Unchecked"
+    return DEFAULT_CAMERA_STATUS
+
+
+def load_camera_statuses(workspace_dir: str) -> Dict[str, str]:
+    """Loads persistent camera review statuses from camera_statuses.json."""
+    p = os.path.join(workspace_dir, CAMERA_STATUSES_FILE)
+    if os.path.exists(p):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return {k: normalize_camera_status(v) for k, v in data.items()}
+        except Exception:
+            pass
+    return {}
+
+
+def save_camera_statuses(workspace_dir: str, statuses: Dict[str, str]) -> str:
+    """Persists camera review statuses to camera_statuses.json."""
+    p = os.path.join(workspace_dir, CAMERA_STATUSES_FILE)
+    clean_statuses = {k: normalize_camera_status(v) for k, v in statuses.items()}
+    os.makedirs(workspace_dir, exist_ok=True)
+    tmp_p = p + ".tmp"
+    with open(tmp_p, "w", encoding="utf-8") as f:
+        json.dump(clean_statuses, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_p, p)
+    return p
+
+
+# Informational reference metadata without automatic severity classifications
+CAMERA_REFERENCE_METADATA = {
     "Shelf M Wow Spagheti, Energen, Sterile Milk (4mm)": {
-        "status": "Confirmed (Kritis)",
         "intended_aisle": "Instant & Import Noodles",
         "recorded_aisle": "Cereal, Oats / Coffee & Tea",
         "description": "Baseline detect_20261024 berada di Y~1730 (border Cereal/Noodles). Data historis Parquet sebelumnya terlempar ke Y~1900 (+180 px di Coffee & Tea).",
@@ -39,7 +83,6 @@ CAMERA_ANOMALY_REGISTRY = {
         "recommended_dx": 0.0,
     },
     "Shelf M Migelas (4mm)": {
-        "status": "Confirmed (Signifikan)",
         "intended_aisle": "Instant & Import Noodles",
         "recorded_aisle": "Cereal, Oats, Granola",
         "description": "Baseline detect_20261024 berada di Y~1748 (dalam Cereal). Koreksi ~ -75 px mengembalikan deteksi ke Instant Noodles.",
@@ -47,7 +90,6 @@ CAMERA_ANOMALY_REGISTRY = {
         "recommended_dx": 0.0,
     },
     "Lorong Bawah 1": {
-        "status": "Confirmed (Terkoreksi Sebagian)",
         "intended_aisle": "Ice Cream",
         "recorded_aisle": "Bread & Rice / Specialty Rice",
         "description": "Baseline detect_20261024 berada di X~922, Y~2299. Area Ice Cream berada di X:[744, 821] dan Y:[2366, 2517].",
@@ -55,7 +97,6 @@ CAMERA_ANOMALY_REGISTRY = {
         "recommended_dx": -120.0,
     },
     "Shelf M Laundry Liquid": {
-        "status": "Confirmed (Terkoreksi Sebagian)",
         "intended_aisle": "Laundry Detergent",
         "recorded_aisle": "Household Cleaner",
         "description": "Baseline detect_20261024 berada di Y~1330. Area Laundry Detergent berada di Y:[1247, 1298]. Koreksi ~ -58 px mengembalikan deteksi ke Laundry.",
@@ -63,7 +104,6 @@ CAMERA_ANOMALY_REGISTRY = {
         "recommended_dx": 0.0,
     },
     "Shelf M Super Bubur": {
-        "status": "Strong Indication",
         "intended_aisle": "Pasta & Canned Food",
         "recorded_aisle": "Pet Food & Baby Diapers",
         "description": "Proyeksi bimodal / cross-boundary leakage melintasi walkway tengah.",
@@ -71,7 +111,6 @@ CAMERA_ANOMALY_REGISTRY = {
         "recommended_dx": 0.0,
     },
     "Shelf M Beng2 Drink (4mm)": {
-        "status": "Strong Indication",
         "intended_aisle": "Ready To Drink Beverages",
         "recorded_aisle": "Dairy / OUTSIDE_AISLE",
         "description": "Diskrepansi posisi fisik kamera dan koordinat tumpah ke perimeter dinding barat.",
@@ -79,7 +118,6 @@ CAMERA_ANOMALY_REGISTRY = {
         "recommended_dx": 0.0,
     },
     "D62": {
-        "status": "Strong Indication",
         "intended_aisle": "Walkway Tengah / Persimpangan",
         "recorded_aisle": "Pet Food & Supplies & Baby Diapers",
         "description": "Pergeseran proyeksi sumbu X masif ke arah Timur (+350 px / ~11,35 m).",
@@ -87,18 +125,19 @@ CAMERA_ANOMALY_REGISTRY = {
         "recommended_dy": 0.0,
     },
     "Shelf M Cold Bev (4mm)": {
-        "status": "Needs Verification",
         "intended_aisle": "Cold Beverage & Cut Fruits",
         "recorded_aisle": "Tersebar > 7 lorong",
         "description": "Dispersi spasial ekstrem / unclamped projection outliers (> 15 m dari kamera).",
     },
     "D41": {
-        "status": "Needs Verification",
         "intended_aisle": "Fresh Area Barat Laut",
         "recorded_aisle": "Vegetable 3, Fresh Fruit, Chilled Food",
         "description": "Rentang koordinat menyebar ke seluruh toko.",
     },
 }
+
+# Alias for backward-compatibility with older tests
+CAMERA_ANOMALY_REGISTRY = CAMERA_REFERENCE_METADATA
 
 
 class DataLoader:
@@ -183,7 +222,7 @@ class DataLoader:
                 self.floorplan_path = path
                 break
 
-    def get_camera_list(self) -> List[Dict[str, Any]]:
+    def get_camera_list(self, custom_statuses: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
         result = []
         for cam_id in sorted(self.homography_by_cam.keys()):
             cam_info = self.cameras_by_id.get(cam_id, {})
@@ -193,8 +232,15 @@ class DataLoader:
             valid_pairs = [p for p in pairs if p.get("framePt") is not None and p.get("mapPt") is not None]
             c_dets = [d for d in self.baseline_detections if d.get("camera") == cam_id]
 
-            anomaly_info = CAMERA_ANOMALY_REGISTRY.get(cam_id, None)
-            status = anomaly_info["status"] if anomaly_info else "Normal"
+            # Strictly resolve status to one of ['Checked', 'Flagged', 'Unchecked']
+            raw_status = None
+            if custom_statuses and cam_id in custom_statuses:
+                raw_status = custom_statuses[cam_id]
+            elif "review_status" in cam_info:
+                raw_status = cam_info["review_status"]
+
+            status = normalize_camera_status(raw_status)
+            ref_info = CAMERA_REFERENCE_METADATA.get(cam_id, None)
 
             result.append({
                 "id": cam_id,
@@ -202,8 +248,11 @@ class DataLoader:
                 "frame": frame,
                 "pairs_count": len(valid_pairs),
                 "detections_count": len(c_dets),
+                "status": status,
+                "review_status": status,
                 "anomaly_status": status,
-                "anomaly_details": anomaly_info,
+                "reference_info": ref_info,
+                "anomaly_details": ref_info,
                 "camera_meta": cam_info,
             })
         return result

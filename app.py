@@ -137,13 +137,17 @@ def get_camera_frame_size(frame_name: str) -> Tuple[int, int]:
 # Session state initialization
 if "session_calibrations" not in st.session_state:
     st.session_state.session_calibrations = {}
-    overrides_path = os.path.join(WORKSPACE_DIR, "homography_calibration_overrides.json")
-    if os.path.exists(overrides_path):
-        try:
-            with open(overrides_path, "r", encoding="utf-8") as f:
-                saved_data = json.load(f)
-                for cid, record in saved_data.get("cameras", {}).items():
-                    params = record.get("parameters", {})
+if "session_custom_pairs" not in st.session_state:
+    st.session_state.session_custom_pairs = {}
+
+overrides_path = os.path.join(WORKSPACE_DIR, "homography_calibration_overrides.json")
+if os.path.exists(overrides_path):
+    try:
+        with open(overrides_path, "r", encoding="utf-8") as f:
+            saved_data = json.load(f)
+            for cid, record in saved_data.get("cameras", {}).items():
+                params = record.get("parameters", {})
+                if cid not in st.session_state.session_calibrations and params:
                     st.session_state.session_calibrations[cid] = {
                         "dx": float(params.get("delta_x_px", 0.0)),
                         "dy": float(params.get("delta_y_px", 0.0)),
@@ -152,8 +156,10 @@ if "session_calibrations" not in st.session_state:
                         "theta_deg": float(params.get("rotation_deg", 0.0)),
                         "foot_ratio": float(params.get("foot_ratio", 1.0)),
                     }
-        except Exception:
-            pass
+                if cid not in st.session_state.session_custom_pairs and record.get("calibrated_pairs"):
+                    st.session_state.session_custom_pairs[cid] = record["calibrated_pairs"]
+    except Exception:
+        pass
 
 # ----------------- SIDEBAR: CAMERA SELECTION -----------------
 st.sidebar.markdown("### 📷 Camera Selection")
@@ -175,7 +181,10 @@ filtered_cameras = []
 for c in all_cameras:
     cid = c["id"]
     status = c["anomaly_status"]
-    is_calibrated = cid in st.session_state.session_calibrations
+    is_calibrated = (
+        cid in st.session_state.session_calibrations
+        or cid in st.session_state.get("session_custom_pairs", {})
+    )
 
     if filter_option.startswith("All"):
         filtered_cameras.append(c)
@@ -193,7 +202,10 @@ for c in all_cameras:
 if not filtered_cameras:
     filtered_cameras = all_cameras
 
-cam_options = {c["id"]: f"{'💾 ' if c['id'] in st.session_state.session_calibrations else ''}{c['id']} ({c['anomaly_status']})" for c in filtered_cameras}
+cam_options = {
+    c["id"]: f"{'💾 ' if (c['id'] in st.session_state.session_calibrations or c['id'] in st.session_state.get('session_custom_pairs', {})) else ''}{c['id']} ({c['anomaly_status']})"
+    for c in filtered_cameras
+}
 selected_cam_id = st.sidebar.selectbox("Select Camera", options=list(cam_options.keys()), format_func=lambda x: cam_options[x])
 
 cam_info = next(c for c in all_cameras if c["id"] == selected_cam_id)
@@ -371,7 +383,25 @@ if col_save.button("💾 Save", use_container_width=True):
 c_baseline_dets = loader.get_baseline_detections_for_camera(selected_cam_id)
 cam_raw_meta = loader.cameras_by_id.get(selected_cam_id, {})
 cam_pairs = loader.homography_by_cam.get(selected_cam_id, {}).get("pairs", [])
-valid_pairs = [p for p in cam_pairs if p.get("framePt") is not None and p.get("mapPt") is not None]
+
+# Check if there are custom edited pairs in session state
+has_custom_pairs = bool(
+    "session_custom_pairs" in st.session_state
+    and selected_cam_id in st.session_state.session_custom_pairs
+)
+
+if has_custom_pairs:
+    valid_pairs = [
+        {"id": p.get("id"), "framePt": list(p.get("framePt", [0, 0])), "mapPt": list(p.get("mapPt", [0, 0]))}
+        for p in st.session_state.session_custom_pairs[selected_cam_id]
+        if p.get("framePt") is not None and p.get("mapPt") is not None
+    ]
+else:
+    valid_pairs = [
+        {"id": p.get("id"), "framePt": list(p.get("framePt", [0, 0])), "mapPt": list(p.get("mapPt", [0, 0]))}
+        for p in cam_pairs
+        if p.get("framePt") is not None and p.get("mapPt") is not None
+    ]
 
 # Determine pivot center for rotation/scale: camera physical pos or median of map points
 pivot_center = (1875.0, 1684.0)
@@ -396,7 +426,12 @@ T_corr = build_transform_matrix(
 # Baseline homography matrix H_base
 H_base = None
 H_calib = None
-if len(c_baseline_dets) >= 4:
+if has_custom_pairs and len(valid_pairs) >= 4:
+    # When user customizes pairs, recalculate baseline homography directly from the updated correspondence pairs
+    src_f = np.array([p["framePt"] for p in valid_pairs], dtype=float)
+    dst_m = np.array([p["mapPt"] for p in valid_pairs], dtype=float)
+    H_base, _ = compute_homography_dlt(src_f, dst_m)
+elif len(c_baseline_dets) >= 4:
     src_f = np.array([d["foot_native"] for d in c_baseline_dets], dtype=float)
     dst_m = np.array([d["map_px"] for d in c_baseline_dets], dtype=float)
     H_base, _ = compute_homography_dlt(src_f, dst_m)
@@ -621,6 +656,11 @@ with tab_pairs:
             st.image(Image.open(pairs_path), use_container_width=True, caption=f"Pairs Image: {os.path.basename(pairs_path)}")
 
     if valid_pairs:
+        if has_custom_pairs:
+            st.info("✏️ **Pasangan titik kamera ini telah dikustomisasi secara manual.** Matriks homografi & proyeksi denah langsung mengintegrasikan koordinat titik editan ini.")
+        else:
+            st.caption("ℹ️ Menampilkan pasangan titik default dari konfigurasi.")
+
         pairs_table = []
         for p in valid_pairs:
             fpt = p.get("framePt", [0, 0])
@@ -640,19 +680,70 @@ with tab_pairs:
         # Single Pair Editor
         st.markdown("###### Edit Individual Pair Point")
         pair_ids = [p["id"] for p in valid_pairs]
-        edit_pid = st.selectbox("Select Pair ID to Edit", pair_ids)
+        edit_pid = st.selectbox("Select Pair ID to Edit", pair_ids, key=f"sel_pid_{selected_cam_id}")
         target_pair = next(p for p in valid_pairs if p["id"] == edit_pid)
 
         c_ep1, c_ep2, c_ep3, c_ep4 = st.columns(4)
-        ep_fx = c_ep1.number_input("Frame X", value=float(target_pair["framePt"][0]), step=1.0)
-        ep_fy = c_ep2.number_input("Frame Y", value=float(target_pair["framePt"][1]), step=1.0)
-        ep_mx = c_ep3.number_input("Map X", value=float(target_pair["mapPt"][0]), step=1.0)
-        ep_my = c_ep4.number_input("Map Y", value=float(target_pair["mapPt"][1]), step=1.0)
+        ep_fx = c_ep1.number_input(
+            "Frame X",
+            value=float(target_pair["framePt"][0]),
+            step=1.0,
+            key=f"ep_fx_{selected_cam_id}_{edit_pid}",
+        )
+        ep_fy = c_ep2.number_input(
+            "Frame Y",
+            value=float(target_pair["framePt"][1]),
+            step=1.0,
+            key=f"ep_fy_{selected_cam_id}_{edit_pid}",
+        )
+        ep_mx = c_ep3.number_input(
+            "Map X",
+            value=float(target_pair["mapPt"][0]),
+            step=1.0,
+            key=f"ep_mx_{selected_cam_id}_{edit_pid}",
+        )
+        ep_my = c_ep4.number_input(
+            "Map Y",
+            value=float(target_pair["mapPt"][1]),
+            step=1.0,
+            key=f"ep_my_{selected_cam_id}_{edit_pid}",
+        )
 
-        if st.button("Apply Point Edit"):
-            target_pair["framePt"] = [ep_fx, ep_fy]
-            target_pair["mapPt"] = [ep_mx, ep_my]
-            st.success(f"Updated Pair #{edit_pid} in memory!")
+        col_btn_apply, col_btn_reset = st.columns(2)
+        if col_btn_apply.button("💾 Apply Point Edit", use_container_width=True, type="primary"):
+            if "session_custom_pairs" not in st.session_state:
+                st.session_state.session_custom_pairs = {}
+
+            if selected_cam_id not in st.session_state.session_custom_pairs:
+                st.session_state.session_custom_pairs[selected_cam_id] = [
+                    {"id": p["id"], "framePt": list(p["framePt"]), "mapPt": list(p["mapPt"])}
+                    for p in valid_pairs
+                ]
+
+            for p in st.session_state.session_custom_pairs[selected_cam_id]:
+                if p["id"] == edit_pid:
+                    p["framePt"] = [float(ep_fx), float(ep_fy)]
+                    p["mapPt"] = [float(ep_mx), float(ep_my)]
+                    break
+
+            st.session_state[f"ep_fx_{selected_cam_id}_{edit_pid}"] = float(ep_fx)
+            st.session_state[f"ep_fy_{selected_cam_id}_{edit_pid}"] = float(ep_fy)
+            st.session_state[f"ep_mx_{selected_cam_id}_{edit_pid}"] = float(ep_mx)
+            st.session_state[f"ep_my_{selected_cam_id}_{edit_pid}"] = float(ep_my)
+
+            st.success(f"Berhasil memperbarui Pair #{edit_pid} menjadi Frame: ({ep_fx:.1f}, {ep_fy:.1f}), Map: ({ep_mx:.1f}, {ep_my:.1f})!")
+            st.rerun()
+
+        if col_btn_reset.button("↺ Reset Pairs Kamera Ini ke Default", use_container_width=True):
+            if "session_custom_pairs" in st.session_state and selected_cam_id in st.session_state.session_custom_pairs:
+                del st.session_state.session_custom_pairs[selected_cam_id]
+            for p in valid_pairs:
+                pid = p["id"]
+                st.session_state.pop(f"ep_fx_{selected_cam_id}_{pid}", None)
+                st.session_state.pop(f"ep_fy_{selected_cam_id}_{pid}", None)
+                st.session_state.pop(f"ep_mx_{selected_cam_id}_{pid}", None)
+                st.session_state.pop(f"ep_my_{selected_cam_id}_{pid}", None)
+            st.success(f"Pasangan titik untuk {selected_cam_id} telah direset ke default konfigurasi!")
             st.rerun()
     else:
         st.warning("No correspondence pairs configured for this camera.")
@@ -667,6 +758,9 @@ with tab_export:
     saved_cams = list(st.session_state.session_calibrations.keys())
     if selected_cam_id not in saved_cams and (val_dx != 0 or val_dy != 0 or val_sx != 1.0 or val_sy != 1.0 or val_theta != 0):
         saved_cams.append(selected_cam_id)
+    for cc in st.session_state.get("session_custom_pairs", {}).keys():
+        if cc not in saved_cams:
+            saved_cams.append(cc)
 
     st.markdown(f"**Cameras with active calibration ({len(saved_cams)}):** `{saved_cams}`")
 
@@ -715,7 +809,11 @@ with tab_export:
         # Build map of updated pairs for all saved cameras
         all_calibrated_pairs = {}
         for cid in saved_cams:
-            c_pairs = loader.homography_by_cam.get(cid, {}).get("pairs", [])
+            if "session_custom_pairs" in st.session_state and cid in st.session_state.session_custom_pairs:
+                c_pairs = st.session_state.session_custom_pairs[cid]
+            else:
+                c_pairs = loader.homography_by_cam.get(cid, {}).get("pairs", [])
+
             c_p = st.session_state.session_calibrations.get(cid, current_params if cid == selected_cam_id else {})
             cid_meta = loader.cameras_by_id.get(cid, {})
             cid_pivot = tuple(cid_meta.get("pos", [1875.0, 1684.0]))

@@ -28,3 +28,5 @@ desktop.ini
 
 # Streamlit secrets
 .streamlit/secrets.toml
+
+tests/tmp/

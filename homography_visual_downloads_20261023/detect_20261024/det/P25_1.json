@@ -1,0 +1,19 @@
+{
+ "file": "P25_1.jpg",
+ "mux": [
+  960,
+  544
+ ],
+ "config": "pgie_production_shard.txt",
+ "errors": [],
+ "detections": [
+  {
+   "class_id": 0,
+   "conf": 0.25326865911483765,
+   "left": 0.1509341597557068,
+   "top": 116.33441925048828,
+   "width": 11.090523719787598,
+   "height": 98.6446533203125
+  }
+ ]
+}

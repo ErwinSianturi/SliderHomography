@@ -1,0 +1,30 @@
+# Environment & Secrets (NEVER COMMIT)
+.env
+.env.*
+*.env
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Temporary / Scratch Files
+temp_*.png
+*.tmp
+*.log
+
+# OS Metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Streamlit secrets
+.streamlit/secrets.toml

@@ -1,0 +1,19 @@
+{
+ "file": "P26_1.jpg",
+ "mux": [
+  960,
+  544
+ ],
+ "config": "pgie_production_shard.txt",
+ "errors": [],
+ "detections": [
+  {
+   "class_id": 0,
+   "conf": 0.715065062046051,
+   "left": 409.8775329589844,
+   "top": 0.1744881421327591,
+   "width": 21.046485900878906,
+   "height": 42.689144134521484
+  }
+ ]
+}

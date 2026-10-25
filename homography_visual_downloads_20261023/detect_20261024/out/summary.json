@@ -1,0 +1,10 @@
+{
+ "frames": 98,
+ "detections": 1090,
+ "map_valid_production": 903,
+ "map_flagged_production": 187,
+ "no_map_px": 0,
+ "frames_without_detections": [],
+ "export_sha12": "677f91235f68",
+ "floor_sha12": "e44f1dc07361"
+}

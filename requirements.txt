@@ -1,0 +1,5 @@
+streamlit>=1.40.0
+numpy>=1.26.0
+Pillow>=10.0.0
+pytest>=8.0.0
+pytest-asyncio>=1.0.0

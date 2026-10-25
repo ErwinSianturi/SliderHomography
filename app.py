@@ -603,16 +603,17 @@ overlay_path = get_camera_overlay_path(selected_cam_id)
 pairs_path = get_camera_pairs_path(selected_cam_id)
 frame_img_path = loader.get_frame_path(cam_info["frame"])
 
-col_ctrl1, col_ctrl2 = st.columns([3, 1])
+col_ctrl1, col_ctrl2 = st.columns([3.2, 1.2])
 with col_ctrl1:
     view_options = [
+        "🔍 Mode Pembanding Cerdas HD (Kamera & Denah HD)",
         "📌 Live Correspondence Pairs (Frame & Denah Real-time)",
-        "🎛️ Live Calibrated Overlay (Slider & Pairs)",
+        "🎛️ Live Calibrated Overlay (Pipeline)",
         "🖼️ Gambar Overlay Asli Langsung (Baseline Disk)",
         "🗺️ Denah Vektor Lengkap (Full Store Map)",
     ]
-    # Set default: if pairs customized, default to Live Pairs; if slider active, default to Calibrated Overlay; else Baseline
-    default_idx = 0 if has_custom_pairs else (1 if is_calibrated_active else 2)
+    # Default to Smart HD Comparison mode
+    default_idx = 0
     selected_view = st.radio(
         "Pilih Mode Tampilan Visual:",
         view_options,
@@ -638,7 +639,88 @@ with col_ctrl2:
         )
 
 # Render chosen view
-if selected_view.startswith("📌 Live Correspondence Pairs"):
+if selected_view.startswith("🔍 Mode Pembanding Cerdas HD"):
+    if frame_img_path and os.path.exists(frame_img_path):
+        f_img_raw = Image.open(frame_img_path).convert("RGB")
+
+        # Interactive display toolbar
+        col_tb1, col_tb2, col_tb3, col_tb4, col_tb5 = st.columns([1.6, 1.6, 0.9, 1.0, 1.0])
+        with col_tb1:
+            layout_mode = st.radio(
+                "Tata Letak:",
+                ["⚖️ Bersisian (50:50)", "📱 Bertumpuk (Lebar Penuh)"],
+                horizontal=True,
+                key=f"layout_{selected_cam_id}",
+            )
+        with col_tb2:
+            zoom_choice = st.select_slider(
+                "Radius/Zoom Denah:",
+                options=[200, 350, 550, 850, 1400],
+                value=350,
+                format_func=lambda x: f"{x} px ({'Fokus Dekat' if x<=250 else ('Satu Lorong' if x<=400 else ('Area Sekitar' if x<=600 else 'Super Luas'))})",
+                key=f"zoom_{selected_cam_id}",
+            )
+        with col_tb3:
+            show_labels = st.checkbox("🏷️ Nama Rak", value=True, key=f"lbl_{selected_cam_id}")
+        with col_tb4:
+            show_fov = st.checkbox("📷 Sudut Kamera", value=True, key=f"fov_{selected_cam_id}")
+        with col_tb5:
+            show_minimap = st.checkbox("🗺️ Minimap Toko", value=True, key=f"mini_{selected_cam_id}")
+
+        annotated_frame = renderer.render_annotated_frame(
+            frame_img=f_img_raw,
+            baseline_dets=c_baseline_dets,
+            pairs=valid_pairs,
+            val_foot=val_foot,
+        )
+
+        smart_map = renderer.render_smart_floorplan_crop(
+            camera_meta=cam_raw_meta,
+            baseline_dets=c_baseline_dets,
+            calibrated_pts=calibrated_pts_arr,
+            pairs=valid_pairs,
+            zoom_margin=zoom_choice,
+            show_fov=show_fov,
+            show_labels=show_labels,
+            show_minimap=show_minimap,
+            show_pairs=True,
+            show_vectors=True,
+        )
+
+        if layout_mode.startswith("⚖️"):
+            col_l, col_r = st.columns(2)
+            with col_l:
+                st.markdown(f"##### 📷 Kamera: `{cam_info['frame']}` ({len(c_baseline_dets)} Orang)")
+                st.image(
+                    annotated_frame,
+                    use_container_width=True,
+                    caption=f"Frame Kamera Asli: Bounding box [#1], [#2]... dengan titik kaki yang diproyeksikan.",
+                )
+            with col_r:
+                st.markdown(f"##### 🗺️ Denah HD: `{selected_cam_id}` (Resolusi {smart_map.width}x{smart_map.height} px)")
+                st.image(
+                    smart_map,
+                    use_container_width=True,
+                    caption=f"Denah Toko HD: Pin [#1], [#2]... warna identik, nama rak, dan vektor pergeseran.",
+                )
+        else:
+            st.markdown(f"##### 📷 Kamera: `{cam_info['frame']}` ({len(c_baseline_dets)} Orang Terdeteksi)")
+            st.image(
+                annotated_frame,
+                use_container_width=True,
+                caption=f"Frame Kamera Asli: Bounding box [#1], [#2]... dengan titik kaki yang diproyeksikan.",
+            )
+            st.markdown("---")
+            st.markdown(f"##### 🗺️ Denah Toko HD Berkualitas Tinggi ({smart_map.width}x{smart_map.height} px)")
+            st.image(
+                smart_map,
+                use_container_width=True,
+                caption=f"Denah Toko HD: Menampilkan posisi kamera, kerucut FOV, pin bernomor & berwarna identik, nama rak terdekat, dan minimap toko.",
+            )
+    else:
+        st.warning(f"File frame kamera tidak ditemukan untuk {selected_cam_id}.")
+
+elif selected_view.startswith("📌 Live Correspondence Pairs"):
     if frame_img_path and os.path.exists(frame_img_path) and valid_pairs:
         f_img = Image.open(frame_img_path).convert("RGB")
         cur_pid = st.session_state.get(f"sel_pid_{selected_cam_id}")

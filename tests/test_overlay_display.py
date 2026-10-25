@@ -67,7 +67,45 @@ def test_render_calibrated_overlay():
     assert diff > 0, "Calibrated overlay image should contain drawn shift lines/points"
 
 
+def test_render_smart_comparison():
+    loader = DataLoader()
+    renderer = FloorplanRenderer(loader.regions, loader.floorplan_path, loader.floorplan_size)
+
+    test_cam = "lorong Bawah 3"
+    cam_meta = loader.cameras_by_id[test_cam]
+    frame_name = loader.cam_to_frame[test_cam]
+    fpath = loader.get_frame_path(frame_name)
+    assert fpath is not None and os.path.exists(fpath)
+
+    fimg = Image.open(fpath)
+    dets = loader.get_baseline_detections_for_camera(test_cam)
+    pairs = loader.homography_by_cam[test_cam].get("pairs", [])
+    b_pts = np.array([d["map_px"] for d in dets], dtype=float)
+    c_pts = b_pts + 20.0
+
+    # 1. Test annotated frame rendering
+    ann_frame = renderer.render_annotated_frame(fimg, dets, pairs=pairs)
+    assert ann_frame.size == fimg.size
+    assert ann_frame.mode == "RGB"
+
+    # 2. Test smart floorplan crop rendering
+    smart_map = renderer.render_smart_floorplan_crop(
+        camera_meta=cam_meta,
+        baseline_dets=dets,
+        calibrated_pts=c_pts,
+        pairs=pairs,
+        zoom_margin=350,
+        show_fov=True,
+        show_labels=True,
+        show_minimap=True,
+    )
+    assert smart_map.width >= 700
+    assert smart_map.height >= 500
+    assert smart_map.mode == "RGB"
+
+
 if __name__ == "__main__":
     test_overlay_image_availability()
     test_render_calibrated_overlay()
+    test_render_smart_comparison()
     print("ALL OVERLAY TESTS PASSED!")

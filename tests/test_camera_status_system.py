@@ -70,9 +70,10 @@ class TestCameraStatusSystem(unittest.TestCase):
         self.assertEqual(normalize_camera_status("needs verification"), "Flagged")
 
     def test_03_camera_fleet_status_initialization(self):
-        """All cameras returned by loader must strictly possess one of the 3 statuses."""
+        """All cameras returned by loader must strictly possess one of the 3 statuses and default to Unchecked."""
         cams = self.loader.get_camera_list()
         self.assertEqual(len(cams), 98)
+        self.assertEqual(set(c["status"] for c in cams), {"Unchecked"})
         for c in cams:
             self.assertIn(c["status"], VALID_CAMERA_STATUSES)
             self.assertNotIn("Critical", c["status"])

@@ -250,11 +250,12 @@ class DataLoader:
             c_dets = [d for d in self.baseline_detections if d.get("camera") == cam_id]
 
             # Strictly resolve status to one of ['Checked', 'Flagged', 'Unchecked']
+            # Review status is purely user-driven and must NEVER default to Checked from legacy data.
             raw_status = None
             if custom_statuses and cam_id in custom_statuses:
                 raw_status = custom_statuses[cam_id]
-            elif "review_status" in cam_info:
-                raw_status = cam_info["review_status"]
+            else:
+                raw_status = DEFAULT_CAMERA_STATUS
 
             status = normalize_camera_status(raw_status)
             ref_info = CAMERA_REFERENCE_METADATA.get(cam_id, None)

@@ -175,6 +175,11 @@ if os.path.exists(overrides_path):
     except Exception:
         pass
 
+# Ensure all cameras in fleet are represented in session_state, defaulting to Unchecked
+for c in loader.homography_by_cam:
+    if c not in st.session_state.camera_statuses:
+        st.session_state.camera_statuses[c] = DEFAULT_CAMERA_STATUS
+
 # ----------------- SIDEBAR: CAMERA SELECTION -----------------
 st.sidebar.markdown("### 📷 Camera Selection")
 all_cameras = loader.get_camera_list(st.session_state.camera_statuses)
@@ -205,6 +210,13 @@ filter_option = st.sidebar.selectbox(
         f"💾 Session Calibrated ({cnt_calib})",
     ],
 )
+
+if st.sidebar.button("🔄 Uncheck Semua Kamera", help="Setel semua 98 kamera menjadi Unchecked"):
+    for c in loader.homography_by_cam:
+        st.session_state.camera_statuses[c] = "Unchecked"
+    save_camera_statuses(WORKSPACE_DIR, st.session_state.camera_statuses)
+    st.sidebar.success("Semua status kamera telah di-reset ke Unchecked!")
+    st.rerun()
 
 filtered_cameras = []
 for c in all_cameras:

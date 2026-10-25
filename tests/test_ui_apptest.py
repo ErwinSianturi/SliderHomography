@@ -23,19 +23,21 @@ from core.config_loader import load_camera_statuses, save_camera_statuses, CAMER
 
 
 class TestStreamlitAppUI(unittest.TestCase):
-    def setUp(self):
-        self.status_file = os.path.join(WORKSPACE_DIR, CAMERA_STATUSES_FILE)
-        self.status_backup = None
-        if os.path.exists(self.status_file):
-            with open(self.status_file, "r", encoding="utf-8") as f:
-                self.status_backup = f.read()
+    @classmethod
+    def setUpClass(cls):
+        cls.status_file = os.path.join(WORKSPACE_DIR, CAMERA_STATUSES_FILE)
+        cls.status_backup = None
+        if os.path.exists(cls.status_file):
+            with open(cls.status_file, "r", encoding="utf-8") as f:
+                cls.status_backup = f.read()
 
-    def tearDown(self):
-        if self.status_backup is not None:
-            with open(self.status_file, "w", encoding="utf-8") as f:
-                f.write(self.status_backup)
-        elif os.path.exists(self.status_file):
-            os.remove(self.status_file)
+    @classmethod
+    def tearDownClass(cls):
+        if cls.status_backup is not None:
+            with open(cls.status_file, "w", encoding="utf-8") as f:
+                f.write(cls.status_backup)
+        elif os.path.exists(cls.status_file):
+            os.remove(cls.status_file)
 
     def test_01_app_initial_load(self):
         """App must mount cleanly with 0 exceptions and valid title."""

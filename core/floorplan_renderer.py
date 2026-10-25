@@ -172,6 +172,7 @@ class FloorplanRenderer:
         header_height: int = 64,
         gutter_width: int = 40,
         current_params: Optional[Dict[str, float]] = None,
+        pairs: Optional[List[Dict[str, Any]]] = None,
     ) -> Image.Image:
         """Renders live calibration shift points directly on top of the pre-existing overlay image."""
         img = base_overlay_img.copy()
@@ -190,6 +191,31 @@ class FloorplanRenderer:
         c_pts = np.asarray(calibrated_pts, dtype=float)
         R = 6
         any_shift = False
+
+        # Draw correspondence pairs if provided
+        if pairs:
+            for p in pairs:
+                pid = p.get("id")
+                mpt = p.get("mapPt")
+                if mpt is not None:
+                    mx, my = float(mpt[0]), float(mpt[1])
+                    if (x0 - 30 <= mx <= x1 + 30) and (y0 - 30 <= my <= y1 + 30):
+                        mx_canv = crop_x_offset + (mx - x0)
+                        my_canv = crop_y_offset + (my - y0)
+                        draw.rectangle(
+                            [mx_canv - 5, my_canv - 5, mx_canv + 5, my_canv + 5],
+                            fill=(234, 179, 8),
+                            outline=(255, 255, 255),
+                            width=2,
+                        )
+                        draw.text(
+                            (mx_canv + 7, my_canv - 7),
+                            f"P#{pid}",
+                            fill=(234, 179, 8),
+                            font=font_label,
+                            stroke_width=2,
+                            stroke_fill=(0, 0, 0),
+                        )
 
         for idx, d in enumerate(baseline_dets):
             if idx >= len(c_pts):
@@ -242,7 +268,7 @@ class FloorplanRenderer:
                     )
 
         # Header status badge
-        if any_shift and current_params:
+        if (any_shift or pairs) and current_params:
             dx = current_params.get("dx", 0.0)
             dy = current_params.get("dy", 0.0)
             sx = current_params.get("sx", 1.0)
@@ -254,3 +280,119 @@ class FloorplanRenderer:
             draw.text((bx_pos, 13), badge_text, fill=(255, 255, 255), font=font_badge)
 
         return img
+
+    def render_dynamic_pairs_side_by_side(
+        self,
+        frame_img: Image.Image,
+        pairs: List[Dict[str, Any]],
+        camera_id: str = "",
+        frame_name: str = "",
+        highlight_pid: Optional[int] = None,
+        margin: int = 80,
+    ) -> Image.Image:
+        """Dynamically renders side-by-side view of camera frame and floorplan crop with pairs.
+        
+        Reflects any manual pair modifications immediately in real-time.
+        """
+        base_floor = self.get_base_map()
+        FW, FH = self.canvas_size
+
+        drawn = [
+            p for p in pairs
+            if p.get("framePt") is not None and p.get("mapPt") is not None
+        ]
+        if not drawn:
+            return frame_img
+
+        W, H = frame_img.size
+        mxs = [float(p["mapPt"][0]) for p in drawn]
+        mys = [float(p["mapPt"][1]) for p in drawn]
+
+        x0 = max(0, math.floor(min(mxs) - margin))
+        y0 = max(0, math.floor(min(mys) - margin))
+        x1 = min(FW, math.ceil(max(mxs) + margin))
+        y1 = min(FH, math.ceil(max(mys) + margin))
+
+        # Enforce minimum crop dimension for good context
+        if (x1 - x0) < 300:
+            cx = (x0 + x1) / 2.0
+            x0 = max(0, math.floor(cx - 150))
+            x1 = min(FW, math.ceil(cx + 150))
+        if (y1 - y0) < 300:
+            cy = (y0 + y1) / 2.0
+            y0 = max(0, math.floor(cy - 150))
+            y1 = min(FH, math.ceil(cy + 150))
+
+        crop = base_floor.crop((x0, y0, x1, y1))
+        cw, ch = crop.size
+
+        gutter = 40
+        header_h = 64
+        canvas_w = W + gutter + cw
+        canvas_h = header_h + max(H, ch)
+
+        canvas = Image.new("RGB", (canvas_w, canvas_h), (248, 250, 252))
+        canvas.paste(frame_img, (0, header_h))
+        canvas.paste(crop, (W + gutter, header_h))
+
+        draw = ImageDraw.Draw(canvas)
+        font_header = ImageFont.load_default(size=16)
+        font_label = ImageFont.load_default(size=14)
+
+        # Header background and text
+        draw.rectangle([0, 0, canvas_w, header_h], fill=(30, 41, 59))
+        draw.text(
+            (16, 10),
+            f"📷 Kamera: {camera_id} | Frame: {frame_name} ({W}x{H} px) | {len(drawn)} Pasangan Titik (Pairs)",
+            fill=(255, 255, 255),
+            font=font_header,
+        )
+        draw.text(
+            (16, 36),
+            f"Denah Crop: X:[{x0}, {x1}], Y:[{y0}, {y1}] (Render Real-time Dinamis)",
+            fill=(148, 163, 184),
+            font=font_label,
+        )
+
+        palette = [
+            (239, 68, 68), (34, 197, 94), (59, 130, 246), (249, 115, 22), (168, 85, 247),
+            (20, 184, 166), (236, 72, 153), (234, 179, 8), (99, 102, 241), (14, 165, 233),
+            (244, 63, 94), (132, 204, 22), (217, 70, 239), (245, 158, 11), (16, 185, 129),
+        ]
+
+        R = 7
+        for i, p in enumerate(drawn):
+            pid = p["id"]
+            color = palette[i % len(palette)]
+            is_hl = (pid == highlight_pid)
+
+            fx, fy = float(p["framePt"][0]), float(p["framePt"][1])
+            mx, my = float(p["mapPt"][0]), float(p["mapPt"][1])
+
+            f_xy = (fx, fy + header_h)
+            m_xy = (W + gutter + (mx - x0), header_h + (my - y0))
+
+            # Connect line
+            line_w = 4 if is_hl else 2
+            draw.line([f_xy, m_xy], fill=color if not is_hl else (239, 68, 68), width=line_w)
+
+            # Draw circles on frame and map
+            for x, y in (f_xy, m_xy):
+                rad = R + 4 if is_hl else R
+                draw.ellipse(
+                    [x - rad, y - rad, x + rad, y + rad],
+                    fill=(239, 68, 68) if is_hl else color,
+                    outline=(255, 255, 255),
+                    width=3 if is_hl else 2,
+                )
+                lbl = f"P#{pid}" + (" [EDITED]" if is_hl else "")
+                draw.text(
+                    (x + rad + 4, y - rad - 2),
+                    lbl,
+                    fill=(239, 68, 68) if is_hl else (0, 0, 0),
+                    font=font_label,
+                    stroke_width=2,
+                    stroke_fill=(255, 255, 255),
+                )
+
+        return canvas

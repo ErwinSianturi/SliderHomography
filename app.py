@@ -527,9 +527,10 @@ col_m5.metric("Out of Bounds", f"{eval_metrics['out_of_bounds_calibrated']}", f"
 # ----------------- VISUALIZATION PANELS (OVERLAY INSPECTOR) -----------------
 st.markdown("### 🖼️ Camera Frame & Floorplan Overlay Inspector")
 
-# Check if active calibration slider has changed from baseline
+# Check if active calibration slider or pairs have changed from baseline
 is_calibrated_active = (
-    abs(val_dx) > 1e-3
+    has_custom_pairs
+    or abs(val_dx) > 1e-3
     or abs(val_dy) > 1e-3
     or abs(val_sx - 1.0) > 1e-3
     or abs(val_sy - 1.0) > 1e-3
@@ -539,25 +540,32 @@ is_calibrated_active = (
 
 overlay_path = get_camera_overlay_path(selected_cam_id)
 pairs_path = get_camera_pairs_path(selected_cam_id)
+frame_img_path = loader.get_frame_path(cam_info["frame"])
 
 col_ctrl1, col_ctrl2 = st.columns([3, 1])
 with col_ctrl1:
     view_options = [
-        "🖼️ Gambar Overlay Asli Langsung (Baseline)",
-        "🎛️ Live Calibrated Overlay (Slider Real-time)",
-        "📌 Correspondence Pairs Overlay",
+        "📌 Live Correspondence Pairs (Frame & Denah Real-time)",
+        "🎛️ Live Calibrated Overlay (Slider & Pairs)",
+        "🖼️ Gambar Overlay Asli Langsung (Baseline Disk)",
         "🗺️ Denah Vektor Lengkap (Full Store Map)",
     ]
-    # Set default: if calibration is active, show calibrated preview, else show original overlay image directly
+    # Set default: if pairs customized, default to Live Pairs; if slider active, default to Calibrated Overlay; else Baseline
+    default_idx = 0 if has_custom_pairs else (1 if is_calibrated_active else 2)
     selected_view = st.radio(
         "Pilih Mode Tampilan Visual:",
         view_options,
-        index=1 if is_calibrated_active else 0,
+        index=default_idx,
         horizontal=True,
     )
 
 with col_ctrl2:
-    if is_calibrated_active:
+    if has_custom_pairs:
+        st.markdown(
+            f"<div style='margin-top:14px;'><span class='badge-calibrated'>✏️ Pairs Dikustomisasi ({len(valid_pairs)} Titik)</span></div>",
+            unsafe_allow_html=True,
+        )
+    elif is_calibrated_active:
         st.markdown(
             f"<div style='margin-top:14px;'><span class='badge-calibrated'>⚡ Slider Aktif (ΔX={val_dx:+.0f}, ΔY={val_dy:+.0f})</span></div>",
             unsafe_allow_html=True,
@@ -569,16 +577,26 @@ with col_ctrl2:
         )
 
 # Render chosen view
-if selected_view.startswith("🖼️ Gambar Overlay Asli"):
-    if overlay_path and os.path.exists(overlay_path):
-        overlay_orig = Image.open(overlay_path)
-        st.image(
-            overlay_orig,
-            use_container_width=True,
-            caption=f"Gambar Overlay Asli (Baseline): {selected_cam_id} | File: {os.path.basename(overlay_path)} ({overlay_orig.width}x{overlay_orig.height} px)",
+if selected_view.startswith("📌 Live Correspondence Pairs"):
+    if frame_img_path and os.path.exists(frame_img_path) and valid_pairs:
+        f_img = Image.open(frame_img_path).convert("RGB")
+        cur_pid = st.session_state.get(f"sel_pid_{selected_cam_id}")
+        dyn_pairs_img = renderer.render_dynamic_pairs_side_by_side(
+            frame_img=f_img,
+            pairs=valid_pairs,
+            camera_id=selected_cam_id,
+            frame_name=cam_info["frame"],
+            highlight_pid=cur_pid,
         )
+        st.image(
+            dyn_pairs_img,
+            use_container_width=True,
+            caption=f"Visualisasi Pasangan Titik Live: {selected_cam_id} | Memetakan Frame ➔ Denah secara Real-time.",
+        )
+    elif pairs_path and os.path.exists(pairs_path):
+        st.image(Image.open(pairs_path), use_container_width=True, caption=f"Pairs Image: {os.path.basename(pairs_path)}")
     else:
-        st.warning(f"File overlay tidak ditemukan untuk kamera {selected_cam_id}.")
+        st.warning(f"File visualisasi pairs tidak ditemukan untuk kamera {selected_cam_id}.")
 
 elif selected_view.startswith("🎛️ Live Calibrated Overlay"):
     if overlay_path and os.path.exists(overlay_path):
@@ -596,13 +614,14 @@ elif selected_view.startswith("🎛️ Live Calibrated Overlay"):
             header_height=64,
             gutter_width=40,
             current_params=current_params,
+            pairs=valid_pairs,
         )
 
         st.image(
             calibrated_overlay_img,
             use_container_width=True,
             caption=(
-                f"Overlay Terkalibrasi (Live): 🟢 Baseline Map Pt ➔ 🟣 Vektor Pergeseran ➔ 🔵 Posisi Baru "
+                f"Overlay Terkalibrasi (Live): 🟨 Titik Pairs (P#) ➔ 🟣 Vektor Pergeseran ➔ 🔵 Posisi Baru "
                 f"(ΔX={val_dx:+.0f}px, ΔY={val_dy:+.0f}px, Sx={val_sx:.2f}, Sy={val_sy:.2f}, θ={val_theta:+.1f}°, Foot={val_foot:.2f})"
                 if is_calibrated_active
                 else f"Overlay Baseline (Belum ada pergeseran slider). Geser slider di sidebar untuk melihat kalibrasi live!"
@@ -611,16 +630,16 @@ elif selected_view.startswith("🎛️ Live Calibrated Overlay"):
     else:
         st.warning(f"File overlay tidak ditemukan untuk kamera {selected_cam_id}.")
 
-elif selected_view.startswith("📌 Correspondence Pairs"):
-    if pairs_path and os.path.exists(pairs_path):
-        pairs_img = Image.open(pairs_path)
+elif selected_view.startswith("🖼️ Gambar Overlay Asli"):
+    if overlay_path and os.path.exists(overlay_path):
+        overlay_orig = Image.open(overlay_path)
         st.image(
-            pairs_img,
+            overlay_orig,
             use_container_width=True,
-            caption=f"Correspondence Pairs Visualization: {selected_cam_id} | File: {os.path.basename(pairs_path)} ({pairs_img.width}x{pairs_img.height} px)",
+            caption=f"Gambar Overlay Asli (Baseline): {selected_cam_id} | File: {os.path.basename(overlay_path)} ({overlay_orig.width}x{overlay_orig.height} px)",
         )
     else:
-        st.warning(f"File visualisasi pairs tidak ditemukan untuk kamera {selected_cam_id}.")
+        st.warning(f"File overlay tidak ditemukan untuk kamera {selected_cam_id}.")
 
 elif selected_view.startswith("🗺️ Denah Vektor"):
     map_overlay = renderer.render_overlay(
@@ -651,7 +670,22 @@ with tab_pairs:
     st.markdown("##### Correspondence Pairs (`pairs`) in Configuration")
     st.caption("These are the ground-plane correspondence points stored in cameras_export.json used to compute homography.")
 
-    if pairs_path and os.path.exists(pairs_path):
+    if frame_img_path and os.path.exists(frame_img_path) and valid_pairs:
+        f_img_tab = Image.open(frame_img_path).convert("RGB")
+        cur_tab_pid = st.session_state.get(f"sel_pid_{selected_cam_id}")
+        dyn_tab_img = renderer.render_dynamic_pairs_side_by_side(
+            frame_img=f_img_tab,
+            pairs=valid_pairs,
+            camera_id=selected_cam_id,
+            frame_name=cam_info["frame"],
+            highlight_pid=cur_tab_pid,
+        )
+        st.image(
+            dyn_tab_img,
+            use_container_width=True,
+            caption=f"Visualisasi Pasangan Titik Live: Kamera {selected_cam_id} (Perubahan titik Map/Frame langsung terlihat di sini secara real-time).",
+        )
+    elif pairs_path and os.path.exists(pairs_path):
         with st.expander("🖼️ Lihat Gambar Visualisasi Pasangan Titik (Pairs Side-by-Side)", expanded=False):
             st.image(Image.open(pairs_path), use_container_width=True, caption=f"Pairs Image: {os.path.basename(pairs_path)}")
 

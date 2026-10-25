@@ -181,12 +181,8 @@ class TestHomographyCalibration(unittest.TestCase):
             self.assertEqual(h_entry["pairs"], [{"id": 1, "framePt": [1, 1], "mapPt": [2, 2]}])
 
         # Clean up tmp
-        if os.path.exists(path_a):
-            os.remove(path_a)
-        if os.path.exists(path_b):
-            os.remove(path_b)
-        if os.path.exists(tmp_dir):
-            os.rmdir(tmp_dir)
+        import shutil
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

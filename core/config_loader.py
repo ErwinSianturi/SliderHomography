@@ -69,7 +69,24 @@ def save_camera_statuses(workspace_dir: str, statuses: Dict[str, str]) -> str:
     tmp_p = p + ".tmp"
     with open(tmp_p, "w", encoding="utf-8") as f:
         json.dump(clean_statuses, f, indent=2, ensure_ascii=False)
-    os.replace(tmp_p, p)
+    
+    # Robust atomic replace on Windows with retry
+    for attempt in range(5):
+        try:
+            os.replace(tmp_p, p)
+            break
+        except PermissionError:
+            if attempt == 4:
+                try:
+                    with open(p, "w", encoding="utf-8") as f:
+                        json.dump(clean_statuses, f, indent=2, ensure_ascii=False)
+                    if os.path.exists(tmp_p):
+                        os.remove(tmp_p)
+                except Exception:
+                    pass
+            else:
+                import time
+                time.sleep(0.05)
     return p
 
 

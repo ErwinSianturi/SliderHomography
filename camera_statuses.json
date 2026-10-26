@@ -91,10 +91,10 @@
   "Shelf M Dishwash": "Unchecked",
   "Shelf M Laundry Liquid": "Unchecked",
   "Shelf M Migelas (4mm)": "Unchecked",
-  "Shelf M Mineral Water": "Unchecked",
+  "Shelf M Mineral Water": "Flagged",
   "Shelf M Nipis Madu": "Unchecked",
-  "Shelf M Super Bubur": "Unchecked",
-  "Shelf M Wafer (4mm)": "Unchecked",
+  "Shelf M Super Bubur": "Flagged",
+  "Shelf M Wafer (4mm)": "Flagged",
   "Shelf M Wow Spagheti, Energen, Sterile Milk (4mm)": "Unchecked",
   "lorong Bawah 3": "Unchecked"
 }

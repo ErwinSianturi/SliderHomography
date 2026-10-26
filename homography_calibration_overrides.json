@@ -1,0 +1,281 @@
+{
+  "_about": "Collection of Homography Calibration Overrides",
+  "last_updated": "2026-10-26T02:22:47.538824+00:00",
+  "cameras": {
+    "D1": {
+      "_about": "Homography Calibration Slider Experiment Override Record",
+      "exported_at": "2026-10-26T02:20:09.748466+00:00",
+      "camera_id": "D1",
+      "camera_label": "Kasir DP 12-14",
+      "frame": "D1_1.jpg",
+      "camera_status": "Checked",
+      "calibration_mode": "slider_transform",
+      "parameters": {
+        "delta_x_px": 25.0,
+        "delta_y_px": 0.0,
+        "delta_x_m": 0.795,
+        "delta_y_m": 0.0,
+        "scale_x": 1.0,
+        "scale_y": 1.0,
+        "rotation_deg": 0.0,
+        "foot_ratio": 1.0
+      },
+      "baseline_homography_matrix": [
+        [
+          -2.82999677,
+          3.79193937,
+          2892.45510893
+        ],
+        [
+          -1.2217031,
+          1.78440321,
+          1194.74333891
+        ],
+        [
+          -0.00100299,
+          0.00129257,
+          1.0
+        ]
+      ],
+      "calibrated_homography_matrix": [
+        [
+          -2.85507146,
+          3.82425352,
+          2917.45510893
+        ],
+        [
+          -1.2217031,
+          1.78440321,
+          1194.74333891
+        ],
+        [
+          -0.00100299,
+          0.00129257,
+          1.0
+        ]
+      ],
+      "transform_matrix_T": [
+        [
+          1.0,
+          0.0,
+          25.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "spatial_evaluation_metrics": {
+        "count": 22,
+        "mean_shift_px": 24.998116072163814,
+        "mean_shift_m": 0.7949400910948886,
+        "median_shift_px": 24.995075420669036,
+        "median_shift_m": 0.7948433983773548,
+        "max_shift_px": 25.03758765110971,
+        "max_shift_m": 0.7961952873053685,
+        "out_of_bounds_baseline": 0,
+        "out_of_bounds_calibrated": 0,
+        "intended_aisle": null,
+        "intended_aisle_baseline_count": 0,
+        "intended_aisle_calibrated_count": 0,
+        "intended_aisle_baseline_pct": 0.0,
+        "intended_aisle_calibrated_pct": 0.0,
+        "intended_shelf_baseline_count": 0,
+        "intended_shelf_calibrated_count": 0,
+        "intended_shelf_baseline_pct": 0.0,
+        "intended_shelf_calibrated_pct": 0.0,
+        "baseline_aisles": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "calibrated_aisles": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      "calibrated_pairs": [
+        {
+          "id": 2,
+          "framePt": [
+            178,
+            87
+          ],
+          "mapPt": [
+            2936.0,
+            1215.0
+          ]
+        },
+        {
+          "id": 3,
+          "framePt": [
+            435,
+            74
+          ],
+          "mapPt": [
+            2970.0,
+            1204.0
+          ]
+        },
+        {
+          "id": 4,
+          "framePt": [
+            463,
+            149
+          ],
+          "mapPt": [
+            2973.0,
+            1237.0
+          ]
+        },
+        {
+          "id": 5,
+          "framePt": [
+            181,
+            299
+          ],
+          "mapPt": [
+            2941.0,
+            1252.0
+          ]
+        },
+        {
+          "id": 6,
+          "framePt": [
+            208,
+            166
+          ],
+          "mapPt": [
+            2939.0,
+            1230.0
+          ]
+        },
+        {
+          "id": 7,
+          "framePt": [
+            411,
+            288
+          ],
+          "mapPt": [
+            2965.0,
+            1252.0
+          ]
+        },
+        {
+          "id": 8,
+          "framePt": [
+            504,
+            14
+          ],
+          "mapPt": [
+            2986.0,
+            1184.0
+          ]
+        },
+        {
+          "id": 9,
+          "framePt": [
+            555,
+            49
+          ],
+          "mapPt": [
+            3003.0,
+            1186.0
+          ]
+        },
+        {
+          "id": 10,
+          "framePt": [
+            189,
+            17
+          ],
+          "mapPt": [
+            2937.0,
+            1190.0
+          ]
+        }
+      ]
+    },
+    "Shelf M Mineral Water": {
+      "exported_at": "2026-10-26T02:22:19.069300+00:00",
+      "camera_id": "Shelf M Mineral Water",
+      "camera_label": "Shelf M Mineral Water",
+      "frame": "P36_1.jpg",
+      "camera_status": "Flagged",
+      "calibration_mode": "slider_transform",
+      "parameters": {
+        "delta_x_px": 42.0,
+        "delta_y_px": 14.0,
+        "delta_x_m": 1.336,
+        "delta_y_m": 0.445,
+        "scale_x": 1.0,
+        "scale_y": 1.0,
+        "rotation_deg": 0.0,
+        "foot_ratio": 1.0
+      }
+    },
+    "Shelf M Super Bubur": {
+      "exported_at": "2026-10-26T02:22:47.538803+00:00",
+      "camera_id": "Shelf M Super Bubur",
+      "camera_label": "Shelf M Super Bubur",
+      "frame": "P38_1.jpg",
+      "camera_status": "Flagged",
+      "calibration_mode": "slider_transform",
+      "parameters": {
+        "delta_x_px": -6.0,
+        "delta_y_px": -11.0,
+        "delta_x_m": -0.191,
+        "delta_y_m": -0.35,
+        "scale_x": 1.0,
+        "scale_y": 1.0,
+        "rotation_deg": 0.0,
+        "foot_ratio": 1.0
+      }
+    }
+  }
+}

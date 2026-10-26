@@ -26,6 +26,9 @@ from core.config_loader import (
     sanitize_filename,
     load_camera_statuses,
     save_camera_statuses,
+    load_calibration_overrides,
+    save_camera_calibration_override,
+    delete_camera_calibration_override,
     normalize_camera_status,
     VALID_CAMERA_STATUSES,
     DEFAULT_CAMERA_STATUS,
@@ -309,6 +312,7 @@ def cb_reset_calibration(cid):
     st.session_state[f"foot_{cid}"] = 1.0
     if cid in st.session_state.session_calibrations:
         del st.session_state.session_calibrations[cid]
+    delete_camera_calibration_override(WORKSPACE_DIR, cid)
 
 def cb_nudge(key, delta, min_val, max_val):
     curr = float(st.session_state.get(key, 0.0))
@@ -437,7 +441,18 @@ current_params = {
 
 if col_save.button("💾 Save", use_container_width=True):
     st.session_state.session_calibrations[selected_cam_id] = current_params
-    st.sidebar.success(f"Saved calibration for {selected_cam_id}!")
+    custom_pairs = st.session_state.get("session_custom_pairs", {}).get(selected_cam_id)
+    save_camera_calibration_override(
+        workspace_dir=WORKSPACE_DIR,
+        camera_id=selected_cam_id,
+        camera_label=cam_info["label"],
+        frame=cam_info["frame"],
+        parameters=current_params,
+        calibrated_pairs=custom_pairs,
+        camera_status=current_cam_status,
+    )
+    st.sidebar.success(f"✅ Kalibrasi {selected_cam_id} berhasil disimpan permanen ke disk!")
+    st.rerun()
 
 # ----------------- DATA PREPARATION & PROJECTION -----------------
 # Load raw and baseline detections
@@ -908,7 +923,16 @@ with tab_pairs:
             st.session_state[f"ep_mx_{selected_cam_id}_{edit_pid}"] = float(ep_mx)
             st.session_state[f"ep_my_{selected_cam_id}_{edit_pid}"] = float(ep_my)
 
-            st.success(f"Berhasil memperbarui Pair #{edit_pid} menjadi Frame: ({ep_fx:.1f}, {ep_fy:.1f}), Map: ({ep_mx:.1f}, {ep_my:.1f})!")
+            save_camera_calibration_override(
+                workspace_dir=WORKSPACE_DIR,
+                camera_id=selected_cam_id,
+                camera_label=cam_info["label"],
+                frame=cam_info["frame"],
+                parameters=st.session_state.session_calibrations.get(selected_cam_id, current_params),
+                calibrated_pairs=st.session_state.session_custom_pairs[selected_cam_id],
+                camera_status=current_cam_status,
+            )
+            st.success(f"Berhasil memperbarui Pair #{edit_pid} menjadi Frame: ({ep_fx:.1f}, {ep_fy:.1f}), Map: ({ep_mx:.1f}, {ep_my:.1f}) dan disimpan permanen!")
             st.rerun()
 
         if col_btn_reset.button("↺ Reset Pairs Kamera Ini ke Default", use_container_width=True):
@@ -920,6 +944,7 @@ with tab_pairs:
                 st.session_state.pop(f"ep_fy_{selected_cam_id}_{pid}", None)
                 st.session_state.pop(f"ep_mx_{selected_cam_id}_{pid}", None)
                 st.session_state.pop(f"ep_my_{selected_cam_id}_{pid}", None)
+            delete_camera_calibration_override(WORKSPACE_DIR, selected_cam_id, clear_pairs_only=True)
             st.success(f"Pasangan titik untuk {selected_cam_id} telah direset ke default konfigurasi!")
             st.rerun()
     else:

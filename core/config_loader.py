@@ -10,6 +10,7 @@ import json
 import math
 import os
 import re
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from PIL import Image
 
@@ -87,6 +88,171 @@ def save_camera_statuses(workspace_dir: str, statuses: Dict[str, str]) -> str:
             else:
                 import time
                 time.sleep(0.05)
+    return p
+
+
+OVERRIDES_FILE = "homography_calibration_overrides.json"
+
+
+def load_calibration_overrides(workspace_dir: str) -> Dict[str, Any]:
+    """Loads calibration overrides from homography_calibration_overrides.json."""
+    p = os.path.join(workspace_dir, OVERRIDES_FILE)
+    if os.path.exists(p):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
+    return {
+        "_about": "Collection of Homography Calibration Overrides",
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "cameras": {},
+    }
+
+
+def save_camera_calibration_override(
+    workspace_dir: str,
+    camera_id: str,
+    camera_label: str = "",
+    frame: str = "",
+    parameters: Optional[Dict[str, float]] = None,
+    calibrated_pairs: Optional[List[Dict[str, Any]]] = None,
+    camera_status: Optional[str] = None,
+    baseline_H: Optional[Any] = None,
+    calibrated_H: Optional[Any] = None,
+    T_matrix: Optional[Any] = None,
+    metrics: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Saves or updates a camera's calibration parameters and pairs to homography_calibration_overrides.json."""
+    p = os.path.join(workspace_dir, OVERRIDES_FILE)
+    data = load_calibration_overrides(workspace_dir)
+    if "cameras" not in data or not isinstance(data["cameras"], dict):
+        data["cameras"] = {}
+
+    rec = data["cameras"].get(camera_id, {})
+    rec["exported_at"] = datetime.now(timezone.utc).isoformat()
+    rec["camera_id"] = camera_id
+    if camera_label:
+        rec["camera_label"] = camera_label
+    if frame:
+        rec["frame"] = frame
+    if camera_status:
+        rec["camera_status"] = normalize_camera_status(camera_status)
+    elif "camera_status" not in rec:
+        rec["camera_status"] = "Unchecked"
+
+    if parameters is not None:
+        rec["calibration_mode"] = "slider_transform"
+        rec["parameters"] = {
+            "delta_x_px": float(parameters.get("dx", 0.0)),
+            "delta_y_px": float(parameters.get("dy", 0.0)),
+            "delta_x_m": round(float(parameters.get("dx", 0.0)) / 31.44654, 3),
+            "delta_y_m": round(float(parameters.get("dy", 0.0)) / 31.44654, 3),
+            "scale_x": float(parameters.get("sx", 1.0)),
+            "scale_y": float(parameters.get("sy", 1.0)),
+            "rotation_deg": float(parameters.get("theta_deg", 0.0)),
+            "foot_ratio": float(parameters.get("foot_ratio", 1.0)),
+        }
+
+    if calibrated_pairs is not None:
+        rec["calibrated_pairs"] = calibrated_pairs
+
+    if baseline_H is not None:
+        rec["baseline_homography_matrix"] = (
+            [[round(float(v), 8) for v in row] for row in baseline_H]
+            if hasattr(baseline_H, "__iter__") else baseline_H
+        )
+    if calibrated_H is not None:
+        rec["calibrated_homography_matrix"] = (
+            [[round(float(v), 8) for v in row] for row in calibrated_H]
+            if hasattr(calibrated_H, "__iter__") else calibrated_H
+        )
+    if T_matrix is not None:
+        rec["transform_matrix_T"] = (
+            [[round(float(v), 8) for v in row] for row in T_matrix]
+            if hasattr(T_matrix, "__iter__") else T_matrix
+        )
+    if metrics is not None:
+        rec["spatial_evaluation_metrics"] = metrics
+
+    data["last_updated"] = datetime.now(timezone.utc).isoformat()
+    data["cameras"][camera_id] = rec
+
+    os.makedirs(workspace_dir, exist_ok=True)
+    tmp_p = p + ".tmp"
+    with open(tmp_p, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+    for attempt in range(5):
+        try:
+            os.replace(tmp_p, p)
+            break
+        except PermissionError:
+            if attempt == 4:
+                try:
+                    with open(p, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2, ensure_ascii=False)
+                    if os.path.exists(tmp_p):
+                        os.remove(tmp_p)
+                except Exception:
+                    pass
+            else:
+                import time
+                time.sleep(0.05)
+    return p
+
+
+def delete_camera_calibration_override(
+    workspace_dir: str,
+    camera_id: str,
+    clear_pairs_only: bool = False,
+) -> str:
+    """Removes a camera's calibration override entry (or clears its custom pairs) from disk."""
+    p = os.path.join(workspace_dir, OVERRIDES_FILE)
+    if not os.path.exists(p):
+        return p
+
+    data = load_calibration_overrides(workspace_dir)
+    cams = data.get("cameras", {})
+    if camera_id in cams:
+        if clear_pairs_only:
+            cams[camera_id].pop("calibrated_pairs", None)
+            params = cams[camera_id].get("parameters", {})
+            dx = params.get("delta_x_px", 0.0)
+            dy = params.get("delta_y_px", 0.0)
+            sx = params.get("scale_x", 1.0)
+            sy = params.get("scale_y", 1.0)
+            th = params.get("rotation_deg", 0.0)
+            ft = params.get("foot_ratio", 1.0)
+            if dx == 0.0 and dy == 0.0 and sx == 1.0 and sy == 1.0 and th == 0.0 and ft == 1.0:
+                del cams[camera_id]
+        else:
+            del cams[camera_id]
+
+        data["last_updated"] = datetime.now(timezone.utc).isoformat()
+        os.makedirs(workspace_dir, exist_ok=True)
+        tmp_p = p + ".tmp"
+        with open(tmp_p, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        for attempt in range(5):
+            try:
+                os.replace(tmp_p, p)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    try:
+                        with open(p, "w", encoding="utf-8") as f:
+                            json.dump(data, f, indent=2, ensure_ascii=False)
+                        if os.path.exists(tmp_p):
+                            os.remove(tmp_p)
+                    except Exception:
+                        pass
+                else:
+                    import time
+                    time.sleep(0.05)
     return p
 
 
